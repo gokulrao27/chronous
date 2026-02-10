@@ -3,7 +3,7 @@
 // 1. Go to Google Cloud Console > APIs & Services > Credentials
 // 2. Copy your "Client ID" (from the project where you added localhost:5173 to Authorized Origins)
 // 3. Paste it below replacing the placeholder.
-export const GOOGLE_CLIENT_ID: string = '433466959744-5ullh83efvokuh5cd50famapgf1iep4o.apps.googleusercontent.com'; 
+export const GOOGLE_CLIENT_ID: string = 'INSERT_YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
 
 export const COMMON_TIMEZONES = [
   { value: 'UTC', label: 'UTC (Universal Time)' },
