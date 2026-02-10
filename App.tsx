@@ -10,7 +10,7 @@ import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
 import { Trash2, MapPin, Sparkles, Download, Wand2, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus } from 'lucide-react';
 import { getHourInZone, findBestMeetingTimeOffset } from './utils/timeUtils';
-import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE } from './utils/googleApi';
+import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE, GOOGLE_GMAIL_SEND_SCOPE, sendGmail } from './utils/googleApi';
 
 function App() {
   const [members, setMembers] = useState<TeamMember[]>(() => {
@@ -43,9 +43,79 @@ function App() {
   const isDemoMode = user?.accessToken === 'mock_token';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
 
+
+  const upsertMember = (incoming: TeamMember) => {
+    setMembers(prev => {
+      const normalizedEmail = incoming.email?.toLowerCase();
+      const index = prev.findIndex(member => {
+        if (normalizedEmail && member.email?.toLowerCase() === normalizedEmail) return true;
+        return member.name.trim().toLowerCase() === incoming.name.trim().toLowerCase();
+      });
+
+      if (index === -1) return [...prev, incoming];
+
+      const next = [...prev];
+      next[index] = { ...next[index], ...incoming, id: next[index].id };
+      return next;
+    });
+  };
+
+  const decodeInvitePayload = (payload: string) => {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(atob(padded));
+  };
+
   useEffect(() => {
     localStorage.setItem('chronos_team', JSON.stringify(members));
   }, [members]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accepted = params.get('invite_accept');
+    const payload = params.get('payload');
+
+    if (accepted !== '1' || !payload) {
+      return;
+    }
+
+    try {
+      const data = decodeInvitePayload(payload);
+      const invitee: TeamMember = {
+        id: Date.now().toString(),
+        name: data.inviteeName,
+        email: data.inviteeEmail,
+        role: 'External',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}_invitee`,
+        workStart: 9,
+        workEnd: 17,
+      };
+
+      const inviter: TeamMember = {
+        id: `${Date.now()}_inviter`,
+        name: data.inviterName,
+        email: data.inviterEmail,
+        role: 'Owner',
+        timezone: data.inviterTimezone || 'UTC',
+        avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}_inviter`,
+        workStart: 9,
+        workEnd: 17,
+      };
+
+      upsertMember(inviter);
+      upsertMember(invitee);
+      addToast(`Invite accepted. ${data.inviterName} and ${data.inviteeName} were added to the workspace.`, 'success');
+
+      params.delete('invite_accept');
+      params.delete('payload');
+      const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+      window.history.replaceState({}, '', nextUrl);
+    } catch (error) {
+      console.error('Invite acceptance payload invalid', error);
+      addToast('Invite link is invalid or expired.', 'error');
+    }
+  }, []);
 
   // Init Google API
   useEffect(() => {
@@ -145,14 +215,56 @@ function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const addMember = (data: Omit<TeamMember, 'id' | 'avatarUrl'>) => {
+  const addMember = async (
+    data: Omit<TeamMember, 'id' | 'avatarUrl'>,
+    options: { sendInvite: boolean },
+  ) => {
     const newMember: TeamMember = {
       ...data,
       id: Date.now().toString(),
       avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}`,
     };
-    setMembers([...members, newMember]);
+    upsertMember(newMember);
     addToast(`${data.name} added to the team`, 'success');
+
+    if (!options.sendInvite) {
+      return;
+    }
+
+    if (!data.email) {
+      addToast('Invite email skipped because member email is missing.', 'info');
+      return;
+    }
+
+    if (!user) {
+      addToast('Sign in first to send Gmail invites.', 'error');
+      return;
+    }
+
+    try {
+      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE, GOOGLE_CALENDAR_SCOPE], 'consent');
+      const payload = {
+        inviterName: user.name,
+        inviterEmail: user.email,
+        inviterTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        inviteeName: data.name,
+        inviteeEmail: data.email,
+      };
+      const encodedPayload = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      const acceptUrl = `${window.location.origin}?invite_accept=1&payload=${encodedPayload}`;
+      const body = `
+        <h2>${user.name} invited you to ChronosSync</h2>
+        <p>Hi ${data.name},</p>
+        <p>You've been added to a shared scheduling workspace. Click the button below to accept and connect your account.</p>
+        <p><a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;">Accept invite and connect Google</a></p>
+        <p>After accepting, sign in and authorize Gmail + Calendar access to complete syncing on both sides.</p>
+      `;
+      await sendGmail([data.email], `${user.name} invited you to ChronosSync`, body);
+      addToast(`Invite sent to ${data.email}`, 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to send invite email. Check Gmail scope consent and API setup.', 'error');
+    }
   };
 
   const removeMember = (id: string) => {
@@ -235,6 +347,21 @@ function App() {
     } catch (error) {
       console.error(error);
       addToast('Could not sync calendar events', 'error');
+    }
+  };
+
+  const connectGmailAccess = async () => {
+    if (isDemoMode) {
+      addToast('Demo mode: Gmail access is simulated.', 'info');
+      return;
+    }
+
+    try {
+      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE], 'consent');
+      addToast('Gmail access granted successfully.', 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Could not grant Gmail access.', 'error');
     }
   };
 
@@ -392,7 +519,7 @@ function App() {
             </div>
 
             {/* Quick Actions Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 animate-fade-in">
+            <div className="grid grid-cols-2 md:grid-cols-7 gap-4 animate-fade-in">
                 <button onClick={() => setIsCalendarImportOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
                     <div className="p-3 bg-brand-50 rounded-full text-brand-600 mb-3 group-hover:bg-brand-500 group-hover:text-white transition-colors shadow-sm">
                         <CalendarIcon className="w-6 h-6" />
@@ -405,6 +532,13 @@ function App() {
                         <RefreshCcw className="w-6 h-6" />
                     </div>
                     <span className="text-sm font-bold text-text-main">Sync Calendar</span>
+                </button>
+
+                <button onClick={connectGmailAccess} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
+                    <div className="p-3 bg-rose-50 rounded-full text-rose-600 mb-3 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-sm">
+                        <LogIn className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold text-text-main">Connect Gmail</span>
                 </button>
 
                 <button onClick={() => setIsManualBlockOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">

@@ -6,10 +6,11 @@ import { COMMON_TIMEZONES, ROLE_COLORS } from '../constants';
 interface AddMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (member: Omit<TeamMember, 'id' | 'avatarUrl'>) => void;
+  onAdd: (member: Omit<TeamMember, 'id' | 'avatarUrl'>, options: { sendInvite: boolean }) => void;
 }
 
 export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose, onAdd }) => {
+  const [sendInvite, setSendInvite] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -26,8 +27,9 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
     onAdd({
       ...formData,
       email: formData.email.trim() || undefined,
-    });
+    }, { sendInvite });
     onClose();
+    setSendInvite(true);
     setFormData({
       name: '',
       email: '',
@@ -77,6 +79,15 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
               onChange={e => setFormData({ ...formData, email: e.target.value })}
               placeholder="alice@company.com"
             />
+            <label className="mt-2 flex items-center gap-2 text-xs text-text-sub">
+              <input
+                type="checkbox"
+                className="rounded border-stroke"
+                checked={sendInvite}
+                onChange={e => setSendInvite(e.target.checked)}
+              />
+              Send onboarding invite through Gmail (if email is provided)
+            </label>
           </div>
 
           <div>
