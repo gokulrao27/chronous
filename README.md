@@ -9,9 +9,10 @@ A production-focused workspace for distributed scheduling that combines:
 ## Features
 
 - **Google Sign-In (GIS OAuth2)** with robust client/bootstrap handling.
+- **Member onboarding invites** via Gmail with acceptance link that routes invitees into the app.
 - **Calendar sync** from primary Google Calendar.
 - **Meeting scheduling** into Google Calendar with Meet link and attendee invites.
-- **Optional Gmail message send** for custom meeting follow-ups.
+- **Optional Gmail message send** for custom meeting follow-ups and member onboarding invites.
 - **Task workspace** backed by Google Tasks API (sync + create tasks).
 - **Timezone team planning UI** for global teams.
 
