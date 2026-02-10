@@ -10,7 +10,7 @@ import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
 import { Trash2, MapPin, Sparkles, Download, Wand2, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus } from 'lucide-react';
 import { getHourInZone, findBestMeetingTimeOffset } from './utils/timeUtils';
-import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken } from './utils/googleApi';
+import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE } from './utils/googleApi';
 
 function App() {
   const [members, setMembers] = useState<TeamMember[]>(() => {
@@ -96,8 +96,8 @@ function App() {
         
         addToast(`Welcome, ${profile.name}!`, 'success');
 
-        await syncCalendar();
-        await syncTasks();
+        await syncCalendar('');
+        await syncTasks('');
 
     } catch (err) {
         console.error("Login Failed", err);
@@ -221,13 +221,14 @@ function App() {
     addToast('Time blocked on your calendar', 'success');
   };
 
-  const syncCalendar = async () => {
+  const syncCalendar = async (prompt: 'consent' | '' = 'consent') => {
     if (isDemoMode) {
       addToast('Demo mode: calendar sync is simulated.', 'info');
       return;
     }
 
     try {
+      await ensureGoogleScopes([GOOGLE_CALENDAR_SCOPE], prompt);
       const events = await fetchCalendarEvents();
       setMyEvents(events);
       addToast(`Synced ${events.length} calendar events`, 'success');
@@ -237,7 +238,7 @@ function App() {
     }
   };
 
-  const syncTasks = async () => {
+  const syncTasks = async (prompt: 'consent' | '' = 'consent') => {
     if (isDemoMode) {
       addToast('Demo mode: task sync is simulated.', 'info');
       return;
@@ -245,6 +246,7 @@ function App() {
 
     setIsSyncingTasks(true);
     try {
+      await ensureGoogleScopes([GOOGLE_TASKS_SCOPE], prompt);
       const synced = await fetchGoogleTasks();
       setTasks(synced);
       addToast(`Synced ${synced.length} tasks from Google Tasks`, 'success');
@@ -279,6 +281,7 @@ function App() {
     }
 
     try {
+      await ensureGoogleScopes([GOOGLE_TASKS_SCOPE], '');
       const listId = await fetchPrimaryTaskListId();
       if (!listId) {
         addToast('No Google task list found on account.', 'error');

@@ -3,7 +3,7 @@ import { X, Calendar, MapPin, Copy, Check, ExternalLink, Mail, AlertTriangle, Us
 import { TeamMember, MeetingConfig } from '../types';
 import { getHourInZone, isWorkHour, formatTimeInZone } from '../utils/timeUtils';
 import { getHolidayForDate } from '../utils/holidayUtils';
-import { createGoogleCalendarEvent, sendGmail } from '../utils/googleApi';
+import { createGoogleCalendarEvent, sendGmail, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_GMAIL_SEND_SCOPE } from '../utils/googleApi';
 import { generateInviteText } from '../utils/calendarUtils';
 
 interface ScheduleMeetingModalProps {
@@ -108,6 +108,8 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
             onToast('Some members have no email; invites will be sent only to members with email.', 'info');
         }
 
+        await ensureGoogleScopes([GOOGLE_CALENDAR_SCOPE]);
+
         await createGoogleCalendarEvent({
             title: config.title,
             description: config.description,
@@ -120,6 +122,7 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
 
         // 3. Optional: Send detailed email via Gmail API
         if (sendConfirmationEmail) {
+            await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE]);
             const body = `
                 <h2>Meeting Invitation: ${config.title}</h2>
                 <p><strong>Time:</strong> ${selectedDate.toLocaleString()}</p>

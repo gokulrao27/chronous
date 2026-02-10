@@ -40,6 +40,13 @@ A production-focused workspace for distributed scheduling that combines:
    - Google Tasks API
 7. Put your OAuth Client ID into `constants.ts`.
 
+### Avoiding `403 access_denied` during sign-in
+
+- Keep your first sign-in request minimal (`openid`, `userinfo.email`, `userinfo.profile`).
+- Request Calendar / Tasks / Gmail scopes only when the user performs those actions.
+- Ensure your OAuth consent screen is published (or your account is listed under Test users if still in Testing mode).
+- If your app requests restricted scopes like `gmail.send`, use the same Google Cloud project where those APIs are enabled and configured.
+
 > If you see `redirect_uri=storagerelay://blob/...`, your OAuth client is usually not Web type or your JS origin does not exactly match current app origin.
 
 ## Production Hardening Checklist

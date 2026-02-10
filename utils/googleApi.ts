@@ -8,17 +8,32 @@ declare global {
   }
 }
 
-const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/tasks',
+export const BASE_AUTH_SCOPES = [
+  'openid',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/userinfo.email',
-].join(' ');
+];
+
+export const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+export const GOOGLE_TASKS_SCOPE = 'https://www.googleapis.com/auth/tasks';
+export const GOOGLE_GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+
+const SCOPES = BASE_AUTH_SCOPES.join(' ');
 
 let tokenClient: any;
 let gapiInited = false;
 let gisInited = false;
+const grantedScopes = new Set<string>();
+
+const recordScopes = (scopeText?: string) => {
+  if (!scopeText) return;
+  scopeText
+    .split(/\s+/)
+    .filter(Boolean)
+    .forEach(scope => grantedScopes.add(scope));
+};
+
+const hasScopes = (scopes: string[]) => scopes.every(scope => grantedScopes.has(scope));
 
 const waitForGlobal = (globalName: 'google' | 'gapi', timeoutMs = 10000): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -82,7 +97,10 @@ export const initializeGoogleApi = async (): Promise<void> => {
   gisInited = true;
 };
 
-export const requestLogin = (prompt: 'consent' | '' = 'consent'): Promise<{ accessToken: string }> => {
+export const requestLogin = (
+  prompt: 'consent' | '' = 'consent',
+  scopeOverride?: string,
+): Promise<{ accessToken: string }> => {
   return new Promise((resolve, reject) => {
     if (!tokenClient) {
       reject(new Error('Google API not initialized'));
@@ -95,6 +113,8 @@ export const requestLogin = (prompt: 'consent' | '' = 'consent'): Promise<{ acce
         return;
       }
 
+      recordScopes(resp.scope);
+
       if (window.gapi && window.gapi.client) {
         window.gapi.client.setToken(resp);
       }
@@ -106,8 +126,16 @@ export const requestLogin = (prompt: 'consent' | '' = 'consent'): Promise<{ acce
       reject(err);
     };
 
-    tokenClient.requestAccessToken({ prompt });
+    tokenClient.requestAccessToken({ prompt, ...(scopeOverride ? { scope: scopeOverride } : {}) });
   });
+};
+
+export const ensureGoogleScopes = async (requiredScopes: string[], prompt: 'consent' | '' = 'consent') => {
+  if (hasScopes(requiredScopes)) {
+    return;
+  }
+
+  await requestLogin(prompt, requiredScopes.join(' '));
 };
 
 export const revokeGoogleToken = (accessToken?: string) => {
