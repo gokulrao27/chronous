@@ -95,11 +95,18 @@ export const ScheduleMeetingModal: React.FC<ScheduleMeetingModalProps> = ({
         }
 
         // 2. Real Google Calendar Create (Auto-sends invites via 'sendUpdates': 'all')
-        const attendees = activeMembers.map(m => {
-            // Using a placeholder email generation for demo
-            // In production, m.email would be used
-            return `${m.name.toLowerCase().replace(/\s+/g, '.')}@example.com`; 
-        });
+        const attendees = activeMembers
+            .map(m => m.email?.trim())
+            .filter((email): email is string => Boolean(email));
+
+        if (attendees.length === 0) {
+            onToast('No participant emails found. Add emails to team members to send calendar invites.', 'error');
+            return;
+        }
+
+        if (attendees.length < activeMembers.length) {
+            onToast('Some members have no email; invites will be sent only to members with email.', 'info');
+        }
 
         await createGoogleCalendarEvent({
             title: config.title,

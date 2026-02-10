@@ -7,10 +7,10 @@ import { CalendarImportModal } from './components/CalendarImportModal';
 import { ManualBlockModal } from './components/ManualBlockModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
-import { TeamMember, UserProfile, CalendarEvent, MeetingConfig } from './types';
-import { Trash2, MapPin, Sparkles, Download, Wand2, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info } from 'lucide-react';
+import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
+import { Trash2, MapPin, Sparkles, Download, Wand2, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus } from 'lucide-react';
 import { getHourInZone, findBestMeetingTimeOffset } from './utils/timeUtils';
-import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents } from './utils/googleApi';
+import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken } from './utils/googleApi';
 
 function App() {
   const [members, setMembers] = useState<TeamMember[]>(() => {
@@ -35,6 +35,9 @@ function App() {
   const [isManualBlockOpen, setIsManualBlockOpen] = useState(false);
   const [myEvents, setMyEvents] = useState<CalendarEvent[]>([]);
   const [apiReady, setApiReady] = useState(false);
+  const [tasks, setTasks] = useState<SyncedTask[]>([]);
+  const [isSyncingTasks, setIsSyncingTasks] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
 
   // Checks if user is in demo mode (mock token)
   const isDemoMode = user?.accessToken === 'mock_token';
@@ -62,7 +65,7 @@ function App() {
   }, []);
 
   const handleLogin = async () => {
-    if (GOOGLE_CLIENT_ID === '433466959744-5ullh83efvokuh5cd50famapgf1iep4o.apps.googleusercontent.com') {
+    if (GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE')) {
         addToast('Please replace the placeholder in constants.ts with your actual Google Client ID.', 'error');
         return;
     }
@@ -93,19 +96,12 @@ function App() {
         
         addToast(`Welcome, ${profile.name}!`, 'success');
 
-        // Auto Sync Calendar
-        try {
-            const events = await fetchCalendarEvents();
-            setMyEvents(prev => [...prev, ...events]);
-            addToast(`Synced ${events.length} calendar events`, 'success');
-        } catch (calErr) {
-            console.error(calErr);
-            addToast('Could not sync calendar events', 'error');
-        }
+        await syncCalendar();
+        await syncTasks();
 
     } catch (err) {
         console.error("Login Failed", err);
-        addToast('Login Failed. Check "Authorized JavaScript origins" in Google Console.', 'error');
+        addToast('Login failed. Use a Web application OAuth client ID and add this exact origin to Authorized JavaScript origins in Google Cloud Console.', 'error');
     }
   };
 
@@ -133,8 +129,10 @@ function App() {
   };
 
   const handleLogout = () => {
+    revokeGoogleToken(user?.accessToken);
     setUser(null);
     setMyEvents([]);
+    setTasks([]);
     addToast('Signed out', 'info');
   };
 
@@ -221,6 +219,79 @@ function App() {
   const handleManualBlock = (event: CalendarEvent) => {
     setMyEvents(prev => [...prev, event]);
     addToast('Time blocked on your calendar', 'success');
+  };
+
+  const syncCalendar = async () => {
+    if (isDemoMode) {
+      addToast('Demo mode: calendar sync is simulated.', 'info');
+      return;
+    }
+
+    try {
+      const events = await fetchCalendarEvents();
+      setMyEvents(events);
+      addToast(`Synced ${events.length} calendar events`, 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Could not sync calendar events', 'error');
+    }
+  };
+
+  const syncTasks = async () => {
+    if (isDemoMode) {
+      addToast('Demo mode: task sync is simulated.', 'info');
+      return;
+    }
+
+    setIsSyncingTasks(true);
+    try {
+      const synced = await fetchGoogleTasks();
+      setTasks(synced);
+      addToast(`Synced ${synced.length} tasks from Google Tasks`, 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to sync tasks. Confirm Google Tasks API is enabled.', 'error');
+    } finally {
+      setIsSyncingTasks(false);
+    }
+  };
+
+  const createTask = async () => {
+    if (!newTaskTitle.trim()) {
+      addToast('Enter a task title first.', 'info');
+      return;
+    }
+
+    if (isDemoMode) {
+      setTasks(prev => [
+        {
+          id: Math.random().toString(36).slice(2),
+          title: newTaskTitle,
+          status: 'needsAction',
+          listId: 'demo',
+          listTitle: 'Demo Tasks',
+        },
+        ...prev,
+      ]);
+      setNewTaskTitle('');
+      addToast('Demo task created.', 'success');
+      return;
+    }
+
+    try {
+      const listId = await fetchPrimaryTaskListId();
+      if (!listId) {
+        addToast('No Google task list found on account.', 'error');
+        return;
+      }
+
+      await createGoogleTask(listId, newTaskTitle.trim());
+      setNewTaskTitle('');
+      await syncTasks();
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to create task in Google Tasks.', 'error');
+    }
   };
 
   const now = new Date(new Date().getTime() + selectedHourOffset * 60 * 60 * 1000);
@@ -318,12 +389,19 @@ function App() {
             </div>
 
             {/* Quick Actions Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 animate-fade-in">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 animate-fade-in">
                 <button onClick={() => setIsCalendarImportOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
                     <div className="p-3 bg-brand-50 rounded-full text-brand-600 mb-3 group-hover:bg-brand-500 group-hover:text-white transition-colors shadow-sm">
                         <CalendarIcon className="w-6 h-6" />
                     </div>
                     <span className="text-sm font-bold text-text-main">Import ICS</span>
+                </button>
+
+                <button onClick={syncCalendar} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
+                    <div className="p-3 bg-blue-50 rounded-full text-blue-600 mb-3 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-sm">
+                        <RefreshCcw className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold text-text-main">Sync Calendar</span>
                 </button>
 
                 <button onClick={() => setIsManualBlockOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
@@ -381,6 +459,55 @@ function App() {
             </div>
             </div>
 
+            <div className="bg-surface border border-stroke rounded-lg p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-text-main flex items-center gap-2">
+                  <CheckSquare className="w-4 h-4 text-brand-500" />
+                  SyncTasks Workspace
+                </h3>
+                <button
+                  onClick={syncTasks}
+                  className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 border border-stroke rounded hover:bg-canvas-subtle"
+                >
+                  <RefreshCcw className={`w-3.5 h-3.5 ${isSyncingTasks ? 'animate-spin' : ''}`} />
+                  Sync
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  value={newTaskTitle}
+                  onChange={e => setNewTaskTitle(e.target.value)}
+                  placeholder="Create task in Google Tasks..."
+                  className="flex-1 bg-surface border border-stroke rounded-[3px] px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={createTask}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded bg-brand-500 text-white hover:bg-brand-600"
+                >
+                  <Plus className="w-4 h-4" /> Add Task
+                </button>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto divide-y divide-stroke border border-stroke rounded-[3px]">
+                {tasks.length === 0 ? (
+                  <div className="p-4 text-sm text-text-muted">No tasks synced yet. Click Sync to pull your Google Tasks.</div>
+                ) : (
+                  tasks.map(task => (
+                    <div key={`${task.listId}-${task.id}`} className="p-3 flex items-start justify-between gap-4 text-sm">
+                      <div>
+                        <p className={`font-medium ${task.status === 'completed' ? 'line-through text-text-muted' : 'text-text-main'}`}>{task.title}</p>
+                        <p className="text-xs text-text-muted mt-0.5">{task.listTitle}{task.due ? ` • due ${new Date(task.due).toLocaleDateString()}` : ''}</p>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {task.status === 'completed' ? 'DONE' : 'OPEN'}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             {/* Main Timeline */}
             <div className="space-y-4">
             <Timeline 
@@ -418,6 +545,7 @@ function App() {
                         <img src={member.avatarUrl} alt="" className="w-9 h-9 rounded-full border border-stroke object-cover shadow-sm" />
                         <div>
                         <div className="font-semibold text-text-main text-sm">{member.name}</div>
+                        {member.email && <div className="text-[11px] text-text-muted">{member.email}</div>}
                         <div className="text-xs text-text-sub flex items-center gap-2 mt-0.5">
                             <span className="bg-canvas-subtle px-1.5 py-0.5 rounded-[3px] text-text-muted font-medium border border-stroke">{member.role}</span>
                             <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {member.timezone.replace('_', ' ')}</span>

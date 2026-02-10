@@ -1,6 +1,7 @@
 export interface TeamMember {
   id: string;
   name: string;
+  email?: string;
   role: string;
   timezone: string;
   avatarUrl: string;
@@ -24,6 +25,16 @@ export interface CalendarEvent {
   location?: string;
   description?: string;
   type: 'imported' | 'meeting' | 'block' | 'holiday';
+}
+
+export interface SyncedTask {
+  id: string;
+  title: string;
+  notes?: string;
+  due?: string;
+  status: 'needsAction' | 'completed';
+  listId: string;
+  listTitle: string;
 }
 
 export interface TimezoneOption {
