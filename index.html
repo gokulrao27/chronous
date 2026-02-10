@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>ChronosSync - Team Coordinator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              // Atlassian Light Theme Inspired Palette
+              canvas: {
+                DEFAULT: '#F4F5F7', // Light gray background (Page)
+                subtle: '#EBECF0',  // Slightly darker (Hover/Headers)
+              },
+              surface: {
+                DEFAULT: '#FFFFFF', // Pure White (Cards)
+                hover: '#FAFBFC',   
+                active: '#E3FCEF',  
+              },
+              stroke: {
+                 DEFAULT: '#DFE1E6', // Light gray borders
+                 strong: '#C1C7D0',
+              },
+              brand: {
+                50: '#E6F0FF',
+                100: '#B3D4FF',
+                200: '#4C9AFF',
+                300: '#2684FF',
+                400: '#0065FF', // Primary Brand
+                500: '#0052CC', // Primary Action
+                600: '#0747A6', // Darker Action
+                900: '#091E42', // Deepest Navy
+              },
+              accent: {
+                400: '#00B8D9', // Cyan
+                500: '#008DA6', // Teal
+                600: '#005566', 
+              },
+              text: {
+                main: '#172B4D', // Dark Navy (Main Text)
+                sub: '#5E6C84',  // Medium Gray (Secondary)
+                muted: '#6B778C', // Light Gray (Muted)
+              }
+            },
+            fontFamily: {
+              sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-out',
+              'slide-up': 'slideUp 0.4s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(10px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      /* Custom Scrollbar for Light Theme */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #F4F5F7;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #C1C7D0;
+        border-radius: 5px;
+        border: 2px solid #F4F5F7; /* Creates padding effect */
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #A5ADBA;
+      }
+      body {
+        background-color: #F4F5F7;
+        color: #172B4D;
+      }
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      /* Stripe pattern for sleeping hours */
+      .striped-bg {
+        background-image: linear-gradient(45deg, #EBECF0 25%, transparent 25%, transparent 50%, #EBECF0 50%, #EBECF0 75%, transparent 75%, transparent);
+        background-size: 8px 8px;
+      }
+      .pattern-dots {
+        background-image: radial-gradient(#FFAB00 15%, transparent 15%);
+        background-size: 6px 6px;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "@testing-library/react": "https://esm.sh/@testing-library/react@^16.3.2",
+    "vitest": "https://esm.sh/vitest@^4.0.18",
+    "@testing-library/user-event": "https://esm.sh/@testing-library/user-event@^14.6.1",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "name": "ChronosSync",
+  "description": "A professional, privacy-first visual dashboard for coordinating distributed teams across timezones. Features interactive overlap visualization, drag-to-simulate timelines, and persistent local storage.",
+  "requestFramePermissions": []
+}
