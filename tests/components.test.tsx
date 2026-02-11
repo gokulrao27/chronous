@@ -43,9 +43,13 @@ describe('App shell', () => {
 
     await user.click(screen.getByText('Try Demo Mode (No Account)'));
 
-    expect((await screen.findAllByText(/Good (Morning|Afternoon|Evening), Demo User/)).length).toBeGreaterThan(0);
-    expect(screen.getByText('Sync Calendar')).toBeDefined();
+    expect((await screen.findAllByText(/Good (Morning|Afternoon|Evening), Demo User/)).length).toBe(1);
+    expect(screen.getByText('New Event')).toBeDefined();
+    expect(screen.getByText('Integrations')).toBeDefined();
     expect(screen.getByText('Find Best Time')).toBeDefined();
     expect(screen.getByText('Calendar')).toBeDefined();
+    expect(screen.getByText('Add Task')).toBeDefined();
+    expect(screen.getByText('Share Availability')).toBeDefined();
+    expect(screen.getByText('Daily Briefing')).toBeDefined();
   });
 });

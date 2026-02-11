@@ -55,7 +55,7 @@ describe('App day planner interactions', () => {
     await user.click(screen.getByText('Try Demo Mode (No Account)'));
     await screen.findAllByText(/Good (Morning|Afternoon|Evening), Demo User/);
 
-    await user.click(screen.getAllByText('Click to schedule')[0]);
+    await user.click(screen.getByTestId('time-slot-9'));
     expect(await screen.findByText('Schedule Meeting', { selector: 'h2' })).toBeDefined();
   });
 });

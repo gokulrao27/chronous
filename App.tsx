@@ -7,11 +7,13 @@ import { ManualBlockModal } from './components/ManualBlockModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
-import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut } from 'lucide-react';
+import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut, Sparkles, Settings2, GripVertical, Link, Clock3 } from 'lucide-react';
 import { findBestMeetingTimeOffset } from './utils/timeUtils';
 import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE, GOOGLE_GMAIL_SEND_SCOPE, sendGmail } from './utils/googleApi';
 
 function App() {
+  type DashboardTask = SyncedTask & { duration: string };
+
   const [members, setMembers] = useState<TeamMember[]>(() => {
     try {
       const saved = localStorage.getItem('chronos_team');
@@ -32,9 +34,11 @@ function App() {
   const [isManualBlockOpen, setIsManualBlockOpen] = useState(false);
   const [myEvents, setMyEvents] = useState<CalendarEvent[]>([]);
   const [apiReady, setApiReady] = useState(false);
-  const [tasks, setTasks] = useState<SyncedTask[]>([]);
+  const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDuration, setNewTaskDuration] = useState('30m');
+  const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
 
   const isDemoMode = user?.accessToken === 'mock_token';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
@@ -161,7 +165,13 @@ function App() {
     try {
       await ensureGoogleScopes([GOOGLE_TASKS_SCOPE], prompt);
       const synced = await fetchGoogleTasks();
-      setTasks(synced);
+      const durationOptions = ['30m', '45m', '1h', '90m'];
+      setTasks(
+        synced.map((task, index) => ({
+          ...task,
+          duration: durationOptions[index % durationOptions.length],
+        })),
+      );
       addToast(`Synced ${synced.length} tasks from Google Tasks`, 'success');
     } catch (error) {
       console.error(error);
@@ -219,12 +229,23 @@ function App() {
     setMyEvents([
       {
         id: 'demo1',
-        title: 'Morning Standup',
+        title: 'External: Morning Standup',
         start: new Date(today.setHours(10, 0, 0, 0)),
         end: new Date(today.setHours(10, 30, 0, 0)),
         type: 'meeting',
         description: 'Daily sync',
       },
+      {
+        id: 'demo2',
+        title: 'Task Block: Refine onboarding flow',
+        start: new Date(today.setHours(14, 0, 0, 0)),
+        end: new Date(today.setHours(15, 0, 0, 0)),
+        type: 'block',
+      },
+    ]);
+    setTasks([
+      { id: 'demo-task-1', title: 'Prepare client brief', duration: '30m', status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' },
+      { id: 'demo-task-2', title: 'Design review notes', duration: '1h', status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' },
     ]);
     addToast('Entered Demo Mode. Features will be simulated.', 'info');
   };
@@ -326,8 +347,9 @@ function App() {
     }
 
     if (isDemoMode) {
-      setTasks(prev => [{ id: Math.random().toString(36).slice(2), title: newTaskTitle, status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' }, ...prev]);
+      setTasks(prev => [{ id: Math.random().toString(36).slice(2), title: newTaskTitle, status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks', duration: newTaskDuration || '30m' }, ...prev]);
       setNewTaskTitle('');
+      setNewTaskDuration('30m');
       addToast('Demo task created.', 'success');
       return;
     }
@@ -341,6 +363,7 @@ function App() {
       }
       await createGoogleTask(listId, newTaskTitle.trim());
       setNewTaskTitle('');
+      setNewTaskDuration('30m');
       await syncTasks();
     } catch (error) {
       console.error(error);
@@ -379,18 +402,41 @@ function App() {
   };
 
   const sideBarActions = [
-    { label: 'Sync Calendar', icon: RefreshCcw, onClick: () => syncCalendar(), primary: true },
     { label: 'Sync Tasks', icon: CheckSquare, onClick: () => syncTasks(), disabled: isSyncingTasks },
-    { label: 'Import ICS', icon: CalendarIcon, onClick: () => setIsCalendarImportOpen(true) },
     { label: 'Add Member', icon: UserPlus, onClick: () => setIsModalOpen(true) },
-    { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
     { label: 'Find Best Time', icon: CalendarClock, onClick: handleFindBestTime },
     { label: 'Block Time', icon: Lock, onClick: () => setIsManualBlockOpen(true) },
+  ];
+
+  const integrationActions = [
+    { label: 'Sync Calendar', icon: RefreshCcw, onClick: () => syncCalendar() },
+    { label: 'Import ICS', icon: CalendarIcon, onClick: () => setIsCalendarImportOpen(true) },
+    { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
     { label: 'Export Config', icon: Download, onClick: handleExport },
   ];
 
+  const bookingLinks = [
+    { id: 'book-15', label: '15 Min Call', duration: '15m' },
+    { id: 'book-30', label: '30 Min Demo', duration: '30m' },
+  ];
+
+  const copyAvailabilityLink = async () => {
+    const link = `${window.location.origin}/availability/${encodeURIComponent(user?.name || 'user')}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      addToast('Availability link copied to clipboard', 'success');
+    } catch {
+      addToast(`Copy failed. Share this link manually: ${link}`, 'info');
+    }
+  };
+
+  const handlePrimaryAddTask = () => {
+    console.log('add-task-primary-clicked');
+    createTask();
+  };
+
   return (
-    <div className="min-h-screen bg-canvas text-text-main font-sans selection:bg-brand-100 selection:text-brand-900">
+    <div className="min-h-screen bg-[#F4F5F7] text-[#172B4D] font-sans selection:bg-blue-100 selection:text-blue-900">
       {!user ? (
         <div className="max-w-md mx-auto mt-24 text-center space-y-6 p-8 animate-fade-in">
           <div className="bg-brand-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -436,19 +482,30 @@ function App() {
         </div>
       ) : (
         <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[320px_1fr]">
-          <aside className="border-r border-stroke bg-[#091734] text-slate-100 p-5 space-y-5">
+          <aside className="border-r border-[#DFE1E6] bg-[#091E42] text-[#DEEBFF] p-5 space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-wider text-slate-300">Chronous</p>
+                <p className="text-xs uppercase tracking-wider text-[#B3D4FF]">Chronous</p>
                 <h1 className="text-2xl font-bold">{greeting}, {user.name}</h1>
               </div>
-              <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full border border-slate-600" />
+              <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-sm border border-[#4C9AFF]" />
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-[#0c1f42] p-4">
-              <div className="flex items-center gap-2 text-sm text-slate-300"><Users className="w-4 h-4" /> Team</div>
+            <button
+              onClick={() => {
+                setScheduleDate(new Date());
+                setIsScheduleOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-[3px] bg-[#0052CC] px-4 py-3 text-sm font-semibold text-white hover:bg-[#0065FF]"
+            >
+              <Plus className="w-4 h-4" />
+              New Event
+            </button>
+
+            <div className="rounded-[3px] border border-[#344563] bg-[#0F274F] p-4">
+              <div className="flex items-center gap-2 text-sm text-[#B3D4FF]"><Users className="w-4 h-4" /> Team</div>
               <p className="text-3xl font-bold mt-2">{members.length}</p>
-              <p className="text-xs text-slate-400">members connected</p>
+              <p className="text-xs text-[#9FADBC]">members connected</p>
             </div>
 
             <nav className="space-y-2">
@@ -457,36 +514,87 @@ function App() {
                   key={action.label}
                   onClick={action.onClick}
                   disabled={action.disabled}
-                  className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition ${action.primary ? 'bg-brand-600 border-brand-500 text-white hover:bg-brand-500' : 'border-slate-700 hover:bg-[#0f274f] text-slate-200'} disabled:opacity-50`}
+                  className="w-full flex items-center justify-between rounded-[3px] border border-[#344563] px-3 py-2.5 text-sm transition hover:bg-[#173A67] text-[#DEEBFF] disabled:opacity-50"
                 >
                   <span className="inline-flex items-center gap-2"><action.icon className="w-4 h-4" /> {action.label}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsIntegrationsOpen((current) => !current);
+                  console.log('integrations-toggle-clicked');
+                }}
+                aria-expanded={isIntegrationsOpen}
+                className="w-full list-none cursor-pointer flex items-center justify-between rounded-[3px] border border-[#344563] bg-[#0F274F] px-3 py-2.5 text-sm text-[#DEEBFF] hover:bg-[#173A67]"
+              >
+                  <span className="inline-flex items-center gap-2"><Settings2 className="w-4 h-4" /> Integrations</span>
+                  <ChevronRight className={`w-4 h-4 transition-transform ${isIntegrationsOpen ? 'rotate-90' : ''}`} />
+              </button>
+                {isIntegrationsOpen && <div className="px-2 pt-2 space-y-1">
+                  {integrationActions.map(action => (
+                    <button
+                      key={action.label}
+                      onClick={action.onClick}
+                      className="w-full rounded-[3px] border border-[#344563] px-3 py-2 text-left text-xs text-[#DEEBFF] hover:bg-[#173A67]"
+                    >
+                      <span className="inline-flex items-center gap-2"><action.icon className="w-3.5 h-3.5" />{action.label}</span>
+                    </button>
+                  ))}
+                </div>}
             </nav>
 
-            <div className="rounded-xl border border-slate-700 p-4 bg-[#0c1f42] space-y-3">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Tasks</p>
+            <div className="rounded-[3px] border border-[#344563] p-4 bg-[#0F274F] space-y-3">
+              <p className="text-xs uppercase tracking-wide text-[#9FADBC]">Tasks</p>
               <div className="flex gap-2">
                 <input
                   value={newTaskTitle}
                   onChange={event => setNewTaskTitle(event.target.value)}
                   placeholder="Add a task..."
-                  className="flex-1 rounded-md bg-[#0a1733] border border-slate-600 px-3 py-2 text-sm"
+                  className="flex-1 rounded-[3px] bg-[#091E42] border border-[#344563] px-3 py-2 text-sm text-[#DEEBFF]"
                 />
-                <button onClick={createTask} className="rounded-md bg-brand-600 px-3 py-2 text-xs font-semibold"><Plus className="w-4 h-4" /></button>
+                <input
+                  value={newTaskDuration}
+                  onChange={event => setNewTaskDuration(event.target.value)}
+                  placeholder="30m"
+                  className="w-20 rounded-[3px] bg-[#091E42] border border-[#344563] px-2 py-2 text-xs text-[#DEEBFF]"
+                  aria-label="Estimated Time"
+                />
+                <button onClick={createTask} className="rounded-[3px] bg-[#0052CC] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0065FF]"><Plus className="w-4 h-4" /></button>
               </div>
+              <p className="text-[11px] text-[#9FADBC] inline-flex items-center gap-1"><Clock3 className="w-3 h-3" />Estimated Time</p>
               <div className="max-h-44 overflow-y-auto space-y-2">
                 {tasks.length === 0 ? (
                   <p className="text-xs text-slate-400">No tasks synced yet.</p>
                 ) : (
                   tasks.slice(0, 5).map(task => (
-                    <div key={`${task.listId}-${task.id}`} className="rounded-md border border-slate-700 px-3 py-2">
+                    <div
+                      key={`${task.listId}-${task.id}`}
+                      draggable
+                      className="group rounded-[3px] border border-[#344563] px-3 py-2 cursor-grab hover:border-[#4C9AFF] hover:bg-[#172B4D]"
+                      title="Drag onto calendar to schedule"
+                    >
+                      <div className="mb-1 flex items-center justify-between">
+                        <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#B3D4FF]"><GripVertical className="w-3 h-3" />Draggable</p>
+                        <span className="rounded-sm bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800">{task.duration}</span>
+                      </div>
                       <p className="text-sm">{task.title}</p>
-                      <p className="text-[11px] text-slate-400">{task.listTitle}</p>
+                      <p className="text-[11px] text-[#9FADBC]">{task.listTitle}</p>
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-700/80 space-y-2">
+                <p className="text-xs uppercase tracking-wide text-[#9FADBC]">Booking Links</p>
+                {bookingLinks.map(bookingLink => (
+                  <div key={bookingLink.id} draggable className="rounded-[3px] border border-[#344563] bg-[#091E42] px-3 py-2 cursor-grab hover:border-[#79F2C0]">
+                    <p className="text-sm inline-flex items-center gap-1.5"><GripVertical className="w-3.5 h-3.5 text-[#79F2C0]" />{bookingLink.label}</p>
+                    <p className="text-[11px] text-[#9FADBC]">Drag to calendar • {bookingLink.duration}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -503,10 +611,38 @@ function App() {
               </div>
             )}
 
-            <section className="rounded-2xl border border-stroke bg-surface p-6 shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-text-muted">Home</p>
-              <h2 className="text-3xl font-bold mt-1">{greeting}, {user.name}</h2>
-              <p className="text-text-sub mt-2">Minimal planning view with a focused day timeline. Use the left sidebar for all workspace operations.</p>
+            <section className="rounded-sm border border-[#DFE1E6] bg-white p-6 shadow-sm space-y-5">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#6B778C]">Command Center</p>
+                  <h2 className="text-2xl md:text-3xl font-bold mt-1 text-[#172B4D]">Plan the day with confidence</h2>
+                </div>
+                <div className="w-full xl:w-auto inline-flex rounded-[3px] border border-[#DFE1E6] overflow-hidden shadow-sm">
+                  <button
+                    onClick={handlePrimaryAddTask}
+                    className="inline-flex items-center gap-2 bg-[#0052CC] px-4 py-3 text-sm font-semibold text-white hover:bg-[#0065FF]"
+                  >
+                    <Plus className="w-4 h-4" /> Add Task
+                  </button>
+                  <button
+                    onClick={copyAvailabilityLink}
+                    className="inline-flex items-center gap-2 border-l border-[#DFE1E6] bg-white px-4 py-3 text-sm font-medium text-[#172B4D] hover:bg-[#F4F5F7]"
+                  >
+                    <Link className="w-4 h-4" /> Share Availability
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_290px] gap-4">
+                <div className="rounded-sm border border-[#DFE1E6] bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B778C]">Daily Briefing</p>
+                  <p className="mt-1 text-sm text-[#172B4D]">Your availability is synced. Tasks on your calendar will block external bookings.</p>
+                </div>
+                <div className="rounded-sm border border-[#DFE1E6] bg-white px-4 py-3">
+                  <p className="text-xs uppercase tracking-wide text-[#6B778C]">Focus score</p>
+                  <p className="mt-1 text-xl font-semibold inline-flex items-center gap-2 text-[#172B4D]"><Sparkles className="w-5 h-5 text-[#0052CC]" />82 / 100</p>
+                </div>
+              </div>
             </section>
 
             <Timeline
