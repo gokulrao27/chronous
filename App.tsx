@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Timeline } from './components/Timeline';
 import { AddMemberModal } from './components/AddMemberModal';
 import { ScheduleMeetingModal } from './components/ScheduleMeetingModal';
@@ -8,8 +7,8 @@ import { ManualBlockModal } from './components/ManualBlockModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
-import { Trash2, MapPin, Sparkles, Download, Wand2, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus } from 'lucide-react';
-import { getHourInZone, findBestMeetingTimeOffset } from './utils/timeUtils';
+import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut } from 'lucide-react';
+import { findBestMeetingTimeOffset } from './utils/timeUtils';
 import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE, GOOGLE_GMAIL_SEND_SCOPE, sendGmail } from './utils/googleApi';
 
 function App() {
@@ -17,19 +16,17 @@ function App() {
     try {
       const saved = localStorage.getItem('chronos_team');
       return saved ? JSON.parse(saved) : INITIAL_TEAM;
-    } catch (e) {
+    } catch {
       return INITIAL_TEAM;
     }
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedHourOffset, setSelectedHourOffset] = useState(0);
   const [filterRole, setFilterRole] = useState('All');
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date>(new Date());
-  
-  // Auth & Calendar State
+
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isCalendarImportOpen, setIsCalendarImportOpen] = useState(false);
   const [isManualBlockOpen, setIsManualBlockOpen] = useState(false);
@@ -39,10 +36,24 @@ function App() {
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
 
-  // Checks if user is in demo mode (mock token)
   const isDemoMode = user?.accessToken === 'mock_token';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
 
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }, []);
+
+  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString() + Math.random().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
 
   const upsertMember = (incoming: TeamMember) => {
     setMembers(prev => {
@@ -75,13 +86,11 @@ function App() {
     const accepted = params.get('invite_accept');
     const payload = params.get('payload');
 
-    if (accepted !== '1' || !payload) {
-      return;
-    }
+    if (accepted !== '1' || !payload) return;
 
     try {
       const data = decodeInvitePayload(payload);
-      const invitee: TeamMember = {
+      upsertMember({
         id: Date.now().toString(),
         name: data.inviteeName,
         email: data.inviteeEmail,
@@ -90,9 +99,8 @@ function App() {
         avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}_invitee`,
         workStart: 9,
         workEnd: 17,
-      };
-
-      const inviter: TeamMember = {
+      });
+      upsertMember({
         id: `${Date.now()}_inviter`,
         name: data.inviterName,
         email: data.inviterEmail,
@@ -101,12 +109,8 @@ function App() {
         avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}_inviter`,
         workStart: 9,
         workEnd: 17,
-      };
-
-      upsertMember(inviter);
-      upsertMember(invitee);
+      });
       addToast(`Invite accepted. ${data.inviterName} and ${data.inviteeName} were added to the workspace.`, 'success');
-
       params.delete('invite_accept');
       params.delete('payload');
       const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
@@ -117,221 +121,18 @@ function App() {
     }
   }, []);
 
-  // Init Google API
   useEffect(() => {
     const init = async () => {
-        try {
-            if (GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE')) {
-                // Warning handled in render or login click
-                return;
-            }
-            await initializeGoogleApi();
-            setApiReady(true);
-        } catch (e) {
-            console.error("Failed to init Google API", e);
-        }
+      try {
+        if (GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE')) return;
+        await initializeGoogleApi();
+        setApiReady(true);
+      } catch (error) {
+        console.error('Failed to init Google API', error);
+      }
     };
     init();
   }, []);
-
-  const handleLogin = async () => {
-    if (GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE')) {
-        addToast('Please replace the placeholder in constants.ts with your actual Google Client ID.', 'error');
-        return;
-    }
-
-    if (!apiReady) {
-        addToast('Google Services initializing...', 'info');
-        // Try to init again if it failed or was skipped
-        try {
-            await initializeGoogleApi();
-            setApiReady(true);
-        } catch(e) {
-             addToast('Initialization failed. Check console for details.', 'error');
-             return;
-        }
-    }
-
-    try {
-        const { accessToken } = await requestLogin();
-        const profile = await fetchUserProfile(accessToken);
-        
-        setUser({
-            name: profile.name,
-            email: profile.email,
-            avatarUrl: profile.picture,
-            organization: 'Google Account',
-            accessToken: accessToken
-        });
-        
-        addToast(`Welcome, ${profile.name}!`, 'success');
-
-        await syncCalendar('');
-        await syncTasks('');
-
-    } catch (err) {
-        console.error("Login Failed", err);
-        addToast('Login failed. Use a Web application OAuth client ID and add this exact origin to Authorized JavaScript origins in Google Cloud Console.', 'error');
-    }
-  };
-
-  const handleDemoLogin = () => {
-      setUser({
-        name: 'Demo User',
-        email: 'demo@example.com',
-        avatarUrl: 'https://picsum.photos/100/100?random=user',
-        organization: 'Demo Mode',
-        accessToken: 'mock_token'
-      });
-      addToast('Entered Demo Mode. Features will be simulated.', 'info');
-      // Add some fake events
-      const today = new Date();
-      setMyEvents([
-          {
-              id: 'demo1',
-              title: 'Standup (Demo)',
-              start: new Date(today.setHours(10,0,0,0)),
-              end: new Date(today.setHours(10,30,0,0)),
-              type: 'meeting',
-              description: 'This is a fake meeting for demo purposes'
-          }
-      ]);
-  };
-
-  const handleLogout = () => {
-    revokeGoogleToken(user?.accessToken);
-    setUser(null);
-    setMyEvents([]);
-    setTasks([]);
-    addToast('Signed out', 'info');
-  };
-
-  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Date.now().toString() + Math.random().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
-
-  const addMember = async (
-    data: Omit<TeamMember, 'id' | 'avatarUrl'>,
-    options: { sendInvite: boolean },
-  ) => {
-    const newMember: TeamMember = {
-      ...data,
-      id: Date.now().toString(),
-      avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}`,
-    };
-    upsertMember(newMember);
-    addToast(`${data.name} added to the team`, 'success');
-
-    if (!options.sendInvite) {
-      return;
-    }
-
-    if (!data.email) {
-      addToast('Invite email skipped because member email is missing.', 'info');
-      return;
-    }
-
-    if (!user) {
-      addToast('Sign in first to send Gmail invites.', 'error');
-      return;
-    }
-
-    try {
-      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE, GOOGLE_CALENDAR_SCOPE], 'consent');
-      const payload = {
-        inviterName: user.name,
-        inviterEmail: user.email,
-        inviterTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        inviteeName: data.name,
-        inviteeEmail: data.email,
-      };
-      const encodedPayload = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-      const acceptUrl = `${window.location.origin}?invite_accept=1&payload=${encodedPayload}`;
-      const body = `
-        <h2>${user.name} invited you to ChronosSync</h2>
-        <p>Hi ${data.name},</p>
-        <p>You've been added to a shared scheduling workspace. Click the button below to accept and connect your account.</p>
-        <p><a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;">Accept invite and connect Google</a></p>
-        <p>After accepting, sign in and authorize Gmail + Calendar access to complete syncing on both sides.</p>
-      `;
-      await sendGmail([data.email], `${user.name} invited you to ChronosSync`, body);
-      addToast(`Invite sent to ${data.email}`, 'success');
-    } catch (error) {
-      console.error(error);
-      addToast('Failed to send invite email. Check Gmail scope consent and API setup.', 'error');
-    }
-  };
-
-  const removeMember = (id: string) => {
-    if (confirm('Are you sure you want to remove this member?')) {
-      setMembers(members.filter(m => m.id !== id));
-      addToast('Member removed', 'info');
-    }
-  };
-
-  const handleExport = () => {
-    try {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(members, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", "chronos_team_config.json");
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-        addToast('Team configuration exported successfully', 'success');
-    } catch (e) {
-        addToast('Failed to export configuration', 'error');
-    }
-  };
-
-  const handleFindBestTime = () => {
-    const activeMembers = filterRole === 'All' 
-        ? members 
-        : members.filter(m => m.role === filterRole);
-        
-    const bestOffset = findBestMeetingTimeOffset(activeMembers);
-    setSelectedHourOffset(bestOffset);
-    
-    const targetTime = new Date(new Date().getTime() + bestOffset * 60 * 60 * 1000);
-    const timeStr = targetTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    addToast(`Jumped to best time slot: ${timeStr} (Your Time)`, 'success');
-  };
-  
-  const handleTimelineHourClick = (date: Date) => {
-    setScheduleDate(date);
-    setIsScheduleOpen(true);
-  };
-
-  const handleCalendarImport = (events: CalendarEvent[]) => {
-    // Tag imported events
-    const taggedEvents = events.map(e => ({ ...e, type: 'imported' as const }));
-    setMyEvents(prev => [...prev, ...taggedEvents]);
-    addToast(`Imported ${events.length} events`, 'success');
-  };
-
-  const handleMeetingScheduled = (config: MeetingConfig, date: Date, participants: string[]) => {
-    // Add to local state so it appears on timeline immediately
-    const newEvent: CalendarEvent = {
-        id: Date.now().toString(),
-        title: config.title,
-        start: date,
-        end: new Date(date.getTime() + config.duration * 60000),
-        location: config.location,
-        description: config.description,
-        type: 'meeting'
-    };
-    setMyEvents(prev => [...prev, newEvent]);
-  };
-
-  const handleManualBlock = (event: CalendarEvent) => {
-    setMyEvents(prev => [...prev, event]);
-    addToast('Time blocked on your calendar', 'success');
-  };
 
   const syncCalendar = async (prompt: 'consent' | '' = 'consent') => {
     if (isDemoMode) {
@@ -347,21 +148,6 @@ function App() {
     } catch (error) {
       console.error(error);
       addToast('Could not sync calendar events', 'error');
-    }
-  };
-
-  const connectGmailAccess = async () => {
-    if (isDemoMode) {
-      addToast('Demo mode: Gmail access is simulated.', 'info');
-      return;
-    }
-
-    try {
-      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE], 'consent');
-      addToast('Gmail access granted successfully.', 'success');
-    } catch (error) {
-      console.error(error);
-      addToast('Could not grant Gmail access.', 'error');
     }
   };
 
@@ -385,6 +171,154 @@ function App() {
     }
   };
 
+  const handleLogin = async () => {
+    if (GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE')) {
+      addToast('Please replace the placeholder in constants.ts with your actual Google Client ID.', 'error');
+      return;
+    }
+
+    if (!apiReady) {
+      addToast('Google Services initializing...', 'info');
+      try {
+        await initializeGoogleApi();
+        setApiReady(true);
+      } catch {
+        addToast('Initialization failed. Check console for details.', 'error');
+        return;
+      }
+    }
+
+    try {
+      const { accessToken } = await requestLogin();
+      const profile = await fetchUserProfile(accessToken);
+      setUser({
+        name: profile.name,
+        email: profile.email,
+        avatarUrl: profile.picture,
+        organization: 'Google Account',
+        accessToken,
+      });
+      addToast(`Welcome, ${profile.name}!`, 'success');
+      await syncCalendar('');
+      await syncTasks('');
+    } catch (error) {
+      console.error('Login Failed', error);
+      addToast('Login failed. Use a Web application OAuth client ID and add this exact origin to Authorized JavaScript origins in Google Cloud Console.', 'error');
+    }
+  };
+
+  const handleDemoLogin = () => {
+    setUser({
+      name: 'Demo User',
+      email: 'demo@example.com',
+      avatarUrl: 'https://picsum.photos/100/100?random=user',
+      organization: 'Demo Mode',
+      accessToken: 'mock_token',
+    });
+    const today = new Date();
+    setMyEvents([
+      {
+        id: 'demo1',
+        title: 'Morning Standup',
+        start: new Date(today.setHours(10, 0, 0, 0)),
+        end: new Date(today.setHours(10, 30, 0, 0)),
+        type: 'meeting',
+        description: 'Daily sync',
+      },
+    ]);
+    addToast('Entered Demo Mode. Features will be simulated.', 'info');
+  };
+
+  const handleLogout = () => {
+    revokeGoogleToken(user?.accessToken);
+    setUser(null);
+    setMyEvents([]);
+    setTasks([]);
+    addToast('Signed out', 'info');
+  };
+
+  const addMember = async (data: Omit<TeamMember, 'id' | 'avatarUrl'>, options: { sendInvite: boolean }) => {
+    const newMember: TeamMember = {
+      ...data,
+      id: Date.now().toString(),
+      avatarUrl: `https://picsum.photos/100/100?random=${Date.now()}`,
+    };
+    upsertMember(newMember);
+    addToast(`${data.name} added to the team`, 'success');
+
+    if (!options.sendInvite) return;
+    if (!data.email) {
+      addToast('Invite email skipped because member email is missing.', 'info');
+      return;
+    }
+    if (!user) {
+      addToast('Sign in first to send Gmail invites.', 'error');
+      return;
+    }
+
+    try {
+      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE, GOOGLE_CALENDAR_SCOPE], 'consent');
+      const payload = {
+        inviterName: user.name,
+        inviterEmail: user.email,
+        inviterTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        inviteeName: data.name,
+        inviteeEmail: data.email,
+      };
+      const encodedPayload = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      const acceptUrl = `${window.location.origin}?invite_accept=1&payload=${encodedPayload}`;
+      const body = `
+        <h2>${user.name} invited you to ChronosSync</h2>
+        <p>Hi ${data.name},</p>
+        <p>You've been added to a shared scheduling workspace. Click the button below to accept and connect your account.</p>
+        <p><a href="${acceptUrl}" style="display:inline-block;padding:10px 14px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;">Accept invite and connect Google</a></p>
+      `;
+      await sendGmail([data.email], `${user.name} invited you to ChronosSync`, body);
+      addToast(`Invite sent to ${data.email}`, 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Failed to send invite email. Check Gmail scope consent and API setup.', 'error');
+    }
+  };
+
+  const handleExport = () => {
+    try {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(members, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute('href', dataStr);
+      downloadAnchorNode.setAttribute('download', 'chronos_team_config.json');
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      addToast('Team configuration exported successfully', 'success');
+    } catch {
+      addToast('Failed to export configuration', 'error');
+    }
+  };
+
+  const handleFindBestTime = () => {
+    const activeMembers = filterRole === 'All' ? members : members.filter(member => member.role === filterRole);
+    const bestOffset = findBestMeetingTimeOffset(activeMembers);
+    const targetTime = new Date(new Date().getTime() + bestOffset * 60 * 60 * 1000);
+    setScheduleDate(targetTime);
+    addToast(`Best slot highlighted: ${targetTime.toLocaleString()}`, 'success');
+  };
+
+  const connectGmailAccess = async () => {
+    if (isDemoMode) {
+      addToast('Demo mode: Gmail access is simulated.', 'info');
+      return;
+    }
+
+    try {
+      await ensureGoogleScopes([GOOGLE_GMAIL_SEND_SCOPE], 'consent');
+      addToast('Gmail access granted successfully.', 'success');
+    } catch (error) {
+      console.error(error);
+      addToast('Could not grant Gmail access.', 'error');
+    }
+  };
+
   const createTask = async () => {
     if (!newTaskTitle.trim()) {
       addToast('Enter a task title first.', 'info');
@@ -392,16 +326,7 @@ function App() {
     }
 
     if (isDemoMode) {
-      setTasks(prev => [
-        {
-          id: Math.random().toString(36).slice(2),
-          title: newTaskTitle,
-          status: 'needsAction',
-          listId: 'demo',
-          listTitle: 'Demo Tasks',
-        },
-        ...prev,
-      ]);
+      setTasks(prev => [{ id: Math.random().toString(36).slice(2), title: newTaskTitle, status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' }, ...prev]);
       setNewTaskTitle('');
       addToast('Demo task created.', 'success');
       return;
@@ -414,7 +339,6 @@ function App() {
         addToast('No Google task list found on account.', 'error');
         return;
       }
-
       await createGoogleTask(listId, newTaskTitle.trim());
       setNewTaskTitle('');
       await syncTasks();
@@ -424,300 +348,182 @@ function App() {
     }
   };
 
-  const now = new Date(new Date().getTime() + selectedHourOffset * 60 * 60 * 1000);
-  const filteredMembers = filterRole === 'All' ? members : members.filter(m => m.role === filterRole);
-  const activeNowCount = filteredMembers.filter(m => {
-    const h = getHourInZone(now, m.timezone);
-    if (m.workStart <= m.workEnd) return h >= m.workStart && h < m.workEnd;
-    return h >= m.workStart || h < m.workEnd;
-  }).length;
+  const handleTimelineHourClick = (date: Date) => {
+    setScheduleDate(date);
+    setIsScheduleOpen(true);
+  };
+
+  const handleCalendarImport = (events: CalendarEvent[]) => {
+    setMyEvents(prev => [...prev, ...events.map(event => ({ ...event, type: 'imported' as const }))]);
+    addToast(`Imported ${events.length} events`, 'success');
+  };
+
+  const handleMeetingScheduled = (config: MeetingConfig, date: Date) => {
+    setMyEvents(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        title: config.title,
+        start: date,
+        end: new Date(date.getTime() + config.duration * 60000),
+        location: config.location,
+        description: config.description,
+        type: 'meeting',
+      },
+    ]);
+  };
+
+  const handleManualBlock = (event: CalendarEvent) => {
+    setMyEvents(prev => [...prev, event]);
+    addToast('Time blocked on your calendar', 'success');
+  };
+
+  const sideBarActions = [
+    { label: 'Sync Calendar', icon: RefreshCcw, onClick: () => syncCalendar(), primary: true },
+    { label: 'Sync Tasks', icon: CheckSquare, onClick: () => syncTasks(), disabled: isSyncingTasks },
+    { label: 'Import ICS', icon: CalendarIcon, onClick: () => setIsCalendarImportOpen(true) },
+    { label: 'Add Member', icon: UserPlus, onClick: () => setIsModalOpen(true) },
+    { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
+    { label: 'Find Best Time', icon: CalendarClock, onClick: handleFindBestTime },
+    { label: 'Block Time', icon: Lock, onClick: () => setIsManualBlockOpen(true) },
+    { label: 'Export Config', icon: Download, onClick: handleExport },
+  ];
 
   return (
-    <div className="min-h-screen bg-canvas text-text-main font-sans selection:bg-brand-100 selection:text-brand-900 pb-12">
-      <Header 
-        memberCount={members.length} 
-        user={user}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-      />
-
-      {/* Login Wall */}
+    <div className="min-h-screen bg-canvas text-text-main font-sans selection:bg-brand-100 selection:text-brand-900">
       {!user ? (
-          <div className="max-w-md mx-auto mt-24 text-center space-y-6 p-8 animate-fade-in">
-              <div className="bg-brand-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <LockKeyhole className="w-10 h-10 text-brand-600" />
-              </div>
-              <h2 className="text-2xl font-bold text-text-main">Authentication Required</h2>
-              <p className="text-text-sub">Please sign in with Google to sync your calendar and access the team dashboard.</p>
-              
-              {GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE') && (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 text-left mb-4 flex gap-2 items-start">
-                      <AlertTriangle className="w-5 h-5 shrink-0" />
-                      <div>
-                        <strong>Setup Required:</strong> Please open <code>constants.ts</code> and replace the placeholder with your actual <strong>Client ID</strong> from Google Cloud Console.
-                      </div>
-                  </div>
-              )}
-
-              <div className="flex flex-col gap-3">
-                  <button 
-                    onClick={handleLogin}
-                    className="w-full py-3 px-6 bg-white border border-stroke hover:bg-gray-50 text-text-main font-bold rounded shadow-md transition-transform active:scale-95 flex items-center justify-center gap-3"
-                  >
-                      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-                      Sign In with Google
-                  </button>
-                  
-                  <div className="relative py-2">
-                    <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-stroke"></span></div>
-                    <div className="relative flex justify-center text-xs uppercase"><span className="bg-canvas px-2 text-text-muted">Or</span></div>
-                  </div>
-
-                  <button 
-                    onClick={handleDemoLogin}
-                    className="w-full py-2.5 px-6 bg-canvas-subtle hover:bg-gray-200 border border-transparent text-text-sub font-semibold rounded transition-colors flex items-center justify-center gap-2 text-sm"
-                  >
-                      <FlaskConical className="w-4 h-4" />
-                      Try Demo Mode (No Account)
-                  </button>
-
-                  {/* Origin Debugger */}
-                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded text-xs text-left">
-                     <div className="flex items-center gap-2 text-blue-800 font-bold mb-2">
-                         <Info className="w-4 h-4" />
-                         Troubleshooting Login
-                     </div>
-                     <p className="text-blue-900 mb-2">
-                         If you see <code>Error 400: invalid_request</code>, check that your Google Cloud Console <strong>Authorized JavaScript Origins</strong> matches this URL exactly:
-                     </p>
-                     <div className="bg-white p-2 border border-blue-200 rounded font-mono break-all text-gray-700 select-all">
-                         {detectedOrigin}
-                     </div>
-                     <p className="mt-2 text-blue-800 italic">
-                         Note: Changes in Google Cloud Console take ~5 minutes to apply.
-                     </p>
-                  </div>
-              </div>
+        <div className="max-w-md mx-auto mt-24 text-center space-y-6 p-8 animate-fade-in">
+          <div className="bg-brand-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <LockKeyhole className="w-10 h-10 text-brand-600" />
           </div>
-      ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
-            
-            {isDemoMode && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between text-sm text-amber-800 animate-slide-up">
-                    <div className="flex items-center gap-2">
-                        <FlaskConical className="w-4 h-4" />
-                        <strong>Demo Mode Active:</strong> Calendar sync and email features are simulated.
-                    </div>
-                    <button onClick={handleLogout} className="underline hover:text-amber-900">Exit</button>
-                </div>
-            )}
+          <h2 className="text-2xl font-bold text-text-main">Authentication Required</h2>
+          <p className="text-text-sub">Please sign in with Google to sync your calendar and access the team dashboard.</p>
 
-            {/* Actions Bar & Title */}
-            <div className="flex flex-col gap-2">
-                <h2 className="text-2xl font-bold text-text-main tracking-tight">Dashboard</h2>
-                <p className="text-text-sub text-sm">Coordinate across {new Set(members.map(m => m.timezone)).size} timezones</p>
-            </div>
-
-            {/* Quick Actions Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-7 gap-4 animate-fade-in">
-                <button onClick={() => setIsCalendarImportOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-brand-50 rounded-full text-brand-600 mb-3 group-hover:bg-brand-500 group-hover:text-white transition-colors shadow-sm">
-                        <CalendarIcon className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Import ICS</span>
-                </button>
-
-                <button onClick={syncCalendar} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-blue-50 rounded-full text-blue-600 mb-3 group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-sm">
-                        <RefreshCcw className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Sync Calendar</span>
-                </button>
-
-                <button onClick={connectGmailAccess} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-rose-50 rounded-full text-rose-600 mb-3 group-hover:bg-rose-500 group-hover:text-white transition-colors shadow-sm">
-                        <LogIn className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Connect Gmail</span>
-                </button>
-
-                <button onClick={() => setIsManualBlockOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-gray-100 rounded-full text-gray-600 mb-3 group-hover:bg-gray-600 group-hover:text-white transition-colors shadow-sm">
-                        <Lock className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Block Time</span>
-                </button>
-
-                <button onClick={handleFindBestTime} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-purple-50 rounded-full text-purple-600 mb-3 group-hover:bg-purple-500 group-hover:text-white transition-colors shadow-sm">
-                        <Wand2 className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Find Best Time</span>
-                </button>
-                
-                <button onClick={() => setIsModalOpen(true)} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-green-50 rounded-full text-green-600 mb-3 group-hover:bg-green-500 group-hover:text-white transition-colors shadow-sm">
-                        <UserPlus className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Add Member</span>
-                </button>
-
-                <button onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-surface border border-stroke rounded-lg shadow-sm hover:shadow-md hover:border-brand-300 transition-all group active:scale-95">
-                    <div className="p-3 bg-orange-50 rounded-full text-orange-600 mb-3 group-hover:bg-orange-500 group-hover:text-white transition-colors shadow-sm">
-                        <Download className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-bold text-text-main">Export Config</span>
-                </button>
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-surface border border-stroke rounded-lg p-6 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                <MapPin className="w-24 h-24 text-text-main" />
-                </div>
-                <p className="text-text-muted text-xs font-bold uppercase tracking-wider">Distribution</p>
-                <h3 className="text-3xl font-bold text-text-main mt-2">
-                {new Set(members.map(m => m.timezone)).size}
-                <span className="text-lg text-text-muted font-normal ml-2">Timezones</span>
-                </h3>
-            </div>
-
-            <div className="bg-surface border border-stroke rounded-lg p-6 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                <div className="w-24 h-24 rounded-full border-8 border-brand-500"></div>
-                </div>
-                <p className="text-text-muted text-xs font-bold uppercase tracking-wider">Active Capacity</p>
-                <h3 className="text-3xl font-bold text-text-main mt-2 flex items-baseline gap-2">
-                <span className="text-brand-500">{activeNowCount}</span>
-                <span className="text-lg text-text-muted font-normal">/ {filteredMembers.length}</span>
-                </h3>
-                <p className="text-[11px] text-text-muted mt-1">Based on timeline selection</p>
-            </div>
-            </div>
-
-            <div className="bg-surface border border-stroke rounded-lg p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold text-text-main flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4 text-brand-500" />
-                  SyncTasks Workspace
-                </h3>
-                <button
-                  onClick={syncTasks}
-                  className="inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 border border-stroke rounded hover:bg-canvas-subtle"
-                >
-                  <RefreshCcw className={`w-3.5 h-3.5 ${isSyncingTasks ? 'animate-spin' : ''}`} />
-                  Sync
-                </button>
+          {GOOGLE_CLIENT_ID.includes('INSERT_YOUR_GOOGLE_CLIENT_ID_HERE') && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800 text-left mb-4 flex gap-2 items-start">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <div>
+                <strong>Setup Required:</strong> Please open <code>constants.ts</code> and replace the placeholder with your actual <strong>Client ID</strong> from Google Cloud Console.
               </div>
+            </div>
+          )}
 
-              <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col gap-3">
+            <button onClick={handleLogin} className="w-full py-3 px-6 bg-white border border-stroke hover:bg-gray-50 text-text-main font-bold rounded shadow-md transition-transform active:scale-95 flex items-center justify-center gap-3">
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              Sign In to Continue
+            </button>
+
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-stroke"></span></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-canvas px-2 text-text-muted">Or</span></div>
+            </div>
+
+            <button onClick={handleDemoLogin} className="w-full py-2.5 px-6 bg-canvas-subtle hover:bg-gray-200 border border-transparent text-text-sub font-semibold rounded transition-colors flex items-center justify-center gap-2 text-sm">
+              <FlaskConical className="w-4 h-4" />
+              Try Demo Mode (No Account)
+            </button>
+
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded text-xs text-left">
+              <div className="flex items-center gap-2 text-blue-800 font-bold mb-2">
+                <Info className="w-4 h-4" />
+                Troubleshooting Login
+              </div>
+              <p className="text-blue-900 mb-2">If you see <code>Error 400: invalid_request</code>, check that your Google Cloud Console <strong>Authorized JavaScript Origins</strong> matches this URL exactly:</p>
+              <div className="bg-white p-2 border border-blue-200 rounded font-mono break-all text-gray-700 select-all">{detectedOrigin}</div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[320px_1fr]">
+          <aside className="border-r border-stroke bg-[#091734] text-slate-100 p-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-300">Chronous</p>
+                <h1 className="text-2xl font-bold">{greeting}, {user.name}</h1>
+              </div>
+              <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full border border-slate-600" />
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-[#0c1f42] p-4">
+              <div className="flex items-center gap-2 text-sm text-slate-300"><Users className="w-4 h-4" /> Team</div>
+              <p className="text-3xl font-bold mt-2">{members.length}</p>
+              <p className="text-xs text-slate-400">members connected</p>
+            </div>
+
+            <nav className="space-y-2">
+              {sideBarActions.map(action => (
+                <button
+                  key={action.label}
+                  onClick={action.onClick}
+                  disabled={action.disabled}
+                  className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition ${action.primary ? 'bg-brand-600 border-brand-500 text-white hover:bg-brand-500' : 'border-slate-700 hover:bg-[#0f274f] text-slate-200'} disabled:opacity-50`}
+                >
+                  <span className="inline-flex items-center gap-2"><action.icon className="w-4 h-4" /> {action.label}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ))}
+            </nav>
+
+            <div className="rounded-xl border border-slate-700 p-4 bg-[#0c1f42] space-y-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Tasks</p>
+              <div className="flex gap-2">
                 <input
                   value={newTaskTitle}
-                  onChange={e => setNewTaskTitle(e.target.value)}
-                  placeholder="Create task in Google Tasks..."
-                  className="flex-1 bg-surface border border-stroke rounded-[3px] px-3 py-2 text-sm"
+                  onChange={event => setNewTaskTitle(event.target.value)}
+                  placeholder="Add a task..."
+                  className="flex-1 rounded-md bg-[#0a1733] border border-slate-600 px-3 py-2 text-sm"
                 />
-                <button
-                  onClick={createTask}
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold rounded bg-brand-500 text-white hover:bg-brand-600"
-                >
-                  <Plus className="w-4 h-4" /> Add Task
-                </button>
+                <button onClick={createTask} className="rounded-md bg-brand-600 px-3 py-2 text-xs font-semibold"><Plus className="w-4 h-4" /></button>
               </div>
-
-              <div className="max-h-56 overflow-y-auto divide-y divide-stroke border border-stroke rounded-[3px]">
+              <div className="max-h-44 overflow-y-auto space-y-2">
                 {tasks.length === 0 ? (
-                  <div className="p-4 text-sm text-text-muted">No tasks synced yet. Click Sync to pull your Google Tasks.</div>
+                  <p className="text-xs text-slate-400">No tasks synced yet.</p>
                 ) : (
-                  tasks.map(task => (
-                    <div key={`${task.listId}-${task.id}`} className="p-3 flex items-start justify-between gap-4 text-sm">
-                      <div>
-                        <p className={`font-medium ${task.status === 'completed' ? 'line-through text-text-muted' : 'text-text-main'}`}>{task.title}</p>
-                        <p className="text-xs text-text-muted mt-0.5">{task.listTitle}{task.due ? ` • due ${new Date(task.due).toLocaleDateString()}` : ''}</p>
-                      </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {task.status === 'completed' ? 'DONE' : 'OPEN'}
-                      </span>
+                  tasks.slice(0, 5).map(task => (
+                    <div key={`${task.listId}-${task.id}`} className="rounded-md border border-slate-700 px-3 py-2">
+                      <p className="text-sm">{task.title}</p>
+                      <p className="text-[11px] text-slate-400">{task.listTitle}</p>
                     </div>
                   ))
                 )}
               </div>
             </div>
 
-            {/* Main Timeline */}
-            <div className="space-y-4">
-            <Timeline 
-                members={members} 
-                selectedHourOffset={selectedHourOffset}
-                onOffsetChange={setSelectedHourOffset}
-                filterRole={filterRole}
-                onFilterChange={setFilterRole}
-                onHourClick={handleTimelineHourClick}
-                myEvents={myEvents}
-                userName={user.name}
-            />
-            </div>
+            <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-[#0f274f]">
+              <LogOut className="w-4 h-4" /> Sign Out
+            </button>
+          </aside>
 
-            {/* List View Details */}
-            <div className="bg-surface border border-stroke rounded-lg overflow-hidden shadow-sm">
-            <div className="p-5 border-b border-stroke flex justify-between items-center bg-canvas-subtle">
-                <h3 className="text-base font-bold text-text-main flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-brand-500" />
-                    Directory
-                </h3>
-                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold bg-stroke/50 px-2 py-1 rounded-[3px]">
-                    {members.length} Total
-                </span>
-            </div>
-            <div className="divide-y divide-stroke">
-                {members.length === 0 ? (
-                <div className="p-12 text-center text-text-sub">
-                    No members yet. Add one to get started!
-                </div>
-                ) : (
-                members.map(member => (
-                    <div key={member.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between hover:bg-canvas transition-colors group gap-4">
-                    <div className="flex items-center gap-4">
-                        <img src={member.avatarUrl} alt="" className="w-9 h-9 rounded-full border border-stroke object-cover shadow-sm" />
-                        <div>
-                        <div className="font-semibold text-text-main text-sm">{member.name}</div>
-                        {member.email && <div className="text-[11px] text-text-muted">{member.email}</div>}
-                        <div className="text-xs text-text-sub flex items-center gap-2 mt-0.5">
-                            <span className="bg-canvas-subtle px-1.5 py-0.5 rounded-[3px] text-text-muted font-medium border border-stroke">{member.role}</span>
-                            <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {member.timezone.replace('_', ' ')}</span>
-                        </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                        <div className="text-left sm:text-right">
-                        <div className="text-[10px] uppercase tracking-wide text-text-muted font-bold">Hours</div>
-                        <div className="text-xs text-text-main font-mono bg-canvas px-2 py-1 rounded-[3px] border border-stroke mt-1 font-medium">
-                            {member.workStart}:00 - {member.workEnd}:00
-                        </div>
-                        </div>
-                        <button 
-                        onClick={() => removeMember(member.id)}
-                        className="p-2 text-text-muted hover:text-red-600 hover:bg-red-50 rounded-[3px] transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                        title="Remove Member"
-                        >
-                        <Trash2 className="w-4 h-4" />
-                        </button>
-                    </div>
-                    </div>
-                ))
-                )}
-            </div>
-            </div>
-        </main>
+          <main className="p-4 md:p-6 lg:p-8 space-y-6">
+            {isDemoMode && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between text-sm text-amber-800">
+                <div className="flex items-center gap-2"><FlaskConical className="w-4 h-4" /> <strong>Demo Mode Active:</strong> Calendar sync and email features are simulated.</div>
+                <button onClick={handleLogout} className="underline hover:text-amber-900">Exit</button>
+              </div>
+            )}
+
+            <section className="rounded-2xl border border-stroke bg-surface p-6 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-text-muted">Home</p>
+              <h2 className="text-3xl font-bold mt-1">{greeting}, {user.name}</h2>
+              <p className="text-text-sub mt-2">Minimal planning view with a focused day timeline. Use the left sidebar for all workspace operations.</p>
+            </section>
+
+            <Timeline
+              members={members}
+              filterRole={filterRole}
+              onFilterChange={setFilterRole}
+              onHourClick={handleTimelineHourClick}
+              myEvents={myEvents}
+              userName={user.name}
+              selectedDate={scheduleDate}
+              onDateChange={setScheduleDate}
+            />
+          </main>
+        </div>
       )}
 
-      <AddMemberModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onAdd={addMember} 
-      />
-      
+      <AddMemberModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={addMember} />
       <ScheduleMeetingModal
         isOpen={isScheduleOpen}
         onClose={() => setIsScheduleOpen(false)}
@@ -727,19 +533,8 @@ function App() {
         onSchedule={handleMeetingScheduled}
         isDemo={isDemoMode}
       />
-
-      <CalendarImportModal
-        isOpen={isCalendarImportOpen}
-        onClose={() => setIsCalendarImportOpen(false)}
-        onImport={handleCalendarImport}
-      />
-
-      <ManualBlockModal
-        isOpen={isManualBlockOpen}
-        onClose={() => setIsManualBlockOpen(false)}
-        onAdd={handleManualBlock}
-      />
-
+      <CalendarImportModal isOpen={isCalendarImportOpen} onClose={() => setIsCalendarImportOpen(false)} onImport={handleCalendarImport} />
+      <ManualBlockModal isOpen={isManualBlockOpen} onClose={() => setIsManualBlockOpen(false)} onAdd={handleManualBlock} />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   );
