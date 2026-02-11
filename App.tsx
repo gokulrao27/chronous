@@ -7,7 +7,7 @@ import { ManualBlockModal } from './components/ManualBlockModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
-import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut } from 'lucide-react';
+import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut, Search, Sparkles, Settings2, GripVertical } from 'lucide-react';
 import { findBestMeetingTimeOffset } from './utils/timeUtils';
 import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE, GOOGLE_GMAIL_SEND_SCOPE, sendGmail } from './utils/googleApi';
 
@@ -379,13 +379,16 @@ function App() {
   };
 
   const sideBarActions = [
-    { label: 'Sync Calendar', icon: RefreshCcw, onClick: () => syncCalendar(), primary: true },
     { label: 'Sync Tasks', icon: CheckSquare, onClick: () => syncTasks(), disabled: isSyncingTasks },
-    { label: 'Import ICS', icon: CalendarIcon, onClick: () => setIsCalendarImportOpen(true) },
     { label: 'Add Member', icon: UserPlus, onClick: () => setIsModalOpen(true) },
-    { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
     { label: 'Find Best Time', icon: CalendarClock, onClick: handleFindBestTime },
     { label: 'Block Time', icon: Lock, onClick: () => setIsManualBlockOpen(true) },
+  ];
+
+  const integrationActions = [
+    { label: 'Sync Calendar', icon: RefreshCcw, onClick: () => syncCalendar() },
+    { label: 'Import ICS', icon: CalendarIcon, onClick: () => setIsCalendarImportOpen(true) },
+    { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
     { label: 'Export Config', icon: Download, onClick: handleExport },
   ];
 
@@ -445,6 +448,17 @@ function App() {
               <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full border border-slate-600" />
             </div>
 
+            <button
+              onClick={() => {
+                setScheduleDate(new Date());
+                setIsScheduleOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:brightness-110"
+            >
+              <Plus className="w-4 h-4" />
+              New Event
+            </button>
+
             <div className="rounded-xl border border-slate-700 bg-[#0c1f42] p-4">
               <div className="flex items-center gap-2 text-sm text-slate-300"><Users className="w-4 h-4" /> Team</div>
               <p className="text-3xl font-bold mt-2">{members.length}</p>
@@ -463,6 +477,24 @@ function App() {
                   <ChevronRight className="w-4 h-4" />
                 </button>
               ))}
+
+              <details className="group rounded-lg border border-slate-700 bg-[#0c1f42]">
+                <summary className="list-none cursor-pointer flex items-center justify-between rounded-lg px-3 py-2.5 text-sm text-slate-100 hover:bg-[#0f274f]">
+                  <span className="inline-flex items-center gap-2"><Settings2 className="w-4 h-4" /> Integrations</span>
+                  <ChevronRight className="w-4 h-4 transition-transform group-open:rotate-90" />
+                </summary>
+                <div className="px-2 pb-2 space-y-1">
+                  {integrationActions.map(action => (
+                    <button
+                      key={action.label}
+                      onClick={action.onClick}
+                      className="w-full rounded-md border border-slate-700 px-3 py-2 text-left text-xs text-slate-200 hover:bg-[#0f274f]"
+                    >
+                      <span className="inline-flex items-center gap-2"><action.icon className="w-3.5 h-3.5" />{action.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </details>
             </nav>
 
             <div className="rounded-xl border border-slate-700 p-4 bg-[#0c1f42] space-y-3">
@@ -481,7 +513,12 @@ function App() {
                   <p className="text-xs text-slate-400">No tasks synced yet.</p>
                 ) : (
                   tasks.slice(0, 5).map(task => (
-                    <div key={`${task.listId}-${task.id}`} className="rounded-md border border-slate-700 px-3 py-2">
+                    <div
+                      key={`${task.listId}-${task.id}`}
+                      className="group rounded-md border border-slate-700 px-3 py-2 cursor-grab hover:border-brand-400 hover:bg-brand-500/10"
+                      title="Drag onto calendar to schedule"
+                    >
+                      <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-brand-300 opacity-0 transition-opacity group-hover:opacity-100"><GripVertical className="w-3 h-3" />Drag to timeline</p>
                       <p className="text-sm">{task.title}</p>
                       <p className="text-[11px] text-slate-400">{task.listTitle}</p>
                     </div>
@@ -503,10 +540,28 @@ function App() {
               </div>
             )}
 
-            <section className="rounded-2xl border border-stroke bg-surface p-6 shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-text-muted">Home</p>
-              <h2 className="text-3xl font-bold mt-1">{greeting}, {user.name}</h2>
-              <p className="text-text-sub mt-2">Minimal planning view with a focused day timeline. Use the left sidebar for all workspace operations.</p>
+            <section className="rounded-2xl border border-stroke bg-surface p-6 shadow-sm space-y-5">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Command Center</p>
+                  <h2 className="text-2xl md:text-3xl font-bold mt-1">Plan the day with confidence</h2>
+                </div>
+                <button className="w-full xl:w-[380px] rounded-xl border border-stroke bg-canvas px-4 py-3 text-left text-sm text-text-sub shadow-inner hover:border-brand-300 transition">
+                  <span className="inline-flex items-center gap-2"><Search className="w-4 h-4" /> Search or run command…</span>
+                  <span className="float-right text-xs text-text-muted">Press Cmd+K</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_290px] gap-4">
+                <div className="rounded-xl border border-emerald-200/70 bg-emerald-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Daily Briefing</p>
+                  <p className="mt-1 text-sm text-emerald-900">You have <strong>2 hours of deep work</strong> available before your first afternoon meeting and a low-conflict slot around 2 PM for collaboration.</p>
+                </div>
+                <div className="rounded-xl border border-stroke bg-canvas-subtle px-4 py-3">
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Focus score</p>
+                  <p className="mt-1 text-xl font-semibold inline-flex items-center gap-2"><Sparkles className="w-5 h-5 text-brand-600" />82 / 100</p>
+                </div>
+              </div>
             </section>
 
             <Timeline

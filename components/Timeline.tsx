@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarEvent, TeamMember } from '../types';
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 
@@ -54,9 +54,14 @@ export const Timeline: React.FC<TimelineProps> = ({
   selectedDate,
   onDateChange,
 }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showNightHours, setShowNightHours] = useState(false);
   const roles = ['All', ...new Set(members.map((member) => member.role))];
 
-  const hours = Array.from({ length: 24 }, (_, hour) => hour);
+  const hours = useMemo(
+    () => Array.from({ length: showNightHours ? 24 : 17 }, (_, index) => (showNightHours ? index : index + 7)),
+    [showNightHours],
+  );
 
   const selectedDayEvents = useMemo(() => {
     const dayStart = startOfDay(selectedDate);
@@ -69,6 +74,20 @@ export const Timeline: React.FC<TimelineProps> = ({
 
   const now = new Date();
   const isViewingToday = startOfDay(now).getTime() === startOfDay(selectedDate).getTime();
+
+  useEffect(() => {
+    if (!scrollRef.current || showNightHours) return;
+    scrollRef.current.scrollTop = 0;
+  }, [selectedDate, showNightHours]);
+
+  const currentTimeTop = useMemo(() => {
+    if (!isViewingToday) return null;
+    const currentHourValue = now.getHours() + now.getMinutes() / 60;
+    const baseHour = showNightHours ? 0 : 7;
+    if (currentHourValue < baseHour) return null;
+    const offsetHours = currentHourValue - baseHour;
+    return offsetHours * 64;
+  }, [isViewingToday, now, showNightHours]);
 
   const navigateDay = (days: number) => {
     const next = new Date(selectedDate);
@@ -131,10 +150,27 @@ export const Timeline: React.FC<TimelineProps> = ({
               </option>
             ))}
           </select>
+
+          <button
+            onClick={() => setShowNightHours((current) => !current)}
+            className="rounded-md border border-stroke px-3 py-2 text-sm text-text-sub hover:bg-canvas"
+          >
+            {showNightHours ? 'Hide Night Hours' : 'View Night Hours'}
+          </button>
         </div>
       </div>
 
-      <div className="max-h-[620px] overflow-y-auto">
+      <div ref={scrollRef} className="relative max-h-[620px] overflow-y-auto">
+        {currentTimeTop !== null && (
+          <div className="pointer-events-none absolute left-[92px] right-0 z-20" style={{ top: `${currentTimeTop}px` }}>
+            <div className="relative border-t-2 border-rose-500">
+              <span className="absolute -left-[82px] -top-2 rounded bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                {now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            </div>
+          </div>
+        )}
+
         {hours.map((hour) => {
           const slotStart = new Date(selectedDate);
           slotStart.setHours(hour, 0, 0, 0);
@@ -145,18 +181,28 @@ export const Timeline: React.FC<TimelineProps> = ({
             (event) => event.start < slotEnd && event.end > slotStart,
           );
 
+          const isBestTimeSlot = hour >= 14 && hour < 16;
+
           return (
             <div
               key={hour}
               onClick={() => onHourClick(slotStart)}
-              className="grid grid-cols-[92px_1fr] min-h-[64px] border-b border-stroke/80 hover:bg-canvas transition-colors cursor-pointer"
+              data-testid={`time-slot-${hour}`}
+              className={`group grid grid-cols-[92px_1fr] min-h-[64px] border-b border-stroke/80 transition-colors cursor-pointer ${isBestTimeSlot ? 'bg-emerald-50/60 hover:bg-emerald-100/70' : 'hover:bg-canvas'}`}
             >
               <div className="px-4 py-3 text-sm text-text-muted border-r border-stroke/60">
                 {slotStart.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </div>
-              <div className="px-4 py-2 space-y-2">
+              <div className="relative px-4 py-2 space-y-2">
+                {isBestTimeSlot && (
+                  <div className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-800">
+                    Best time for Team Meeting
+                  </div>
+                )}
                 {eventsInHour.length === 0 ? (
-                  <div className="text-xs text-text-muted/80">Click to schedule</div>
+                  <div className="invisible h-9 rounded-md border border-dashed border-brand-300 bg-brand-50/40 px-3 py-2 text-xs text-brand-700 group-hover:visible">
+                    Drop a task here or click to schedule
+                  </div>
                 ) : (
                   eventsInHour.map((event) => (
                     <div
