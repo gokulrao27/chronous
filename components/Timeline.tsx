@@ -207,16 +207,18 @@ export const Timeline: React.FC<TimelineProps> = ({
                   eventsInHour.map((event) => (
                     <div
                       key={event.id}
-                      className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900"
+                      className={`rounded-md px-3 py-2 text-sm ${event.type === 'external' || event.type === 'meeting' ? 'border border-violet-200 bg-violet-50 text-violet-900' : 'border border-sky-200 bg-sky-50 text-sky-900'}`}
                     >
                       <p className="font-semibold leading-tight">{event.title}</p>
-                      <p className="text-xs text-brand-700/90 mt-1">
+                      <p className="text-xs mt-1 opacity-90">
                         {event.start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} -{' '}
                         {event.end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                       </p>
                     </div>
                   ))
                 )}
+
+                <div className="pointer-events-none mt-1 border-t border-dashed border-brand-300/80" />
               </div>
             </div>
           );

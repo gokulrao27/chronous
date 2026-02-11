@@ -24,12 +24,13 @@ export interface CalendarEvent {
   end: Date;
   location?: string;
   description?: string;
-  type: 'imported' | 'meeting' | 'block' | 'holiday';
+  type: 'imported' | 'meeting' | 'block' | 'holiday' | 'task' | 'external';
 }
 
 export interface SyncedTask {
   id: string;
   title: string;
+  duration?: string;
   notes?: string;
   due?: string;
   status: 'needsAction' | 'completed';

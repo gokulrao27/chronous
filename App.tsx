@@ -7,7 +7,7 @@ import { ManualBlockModal } from './components/ManualBlockModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { INITIAL_TEAM, GOOGLE_CLIENT_ID } from './constants';
 import { TeamMember, UserProfile, CalendarEvent, MeetingConfig, SyncedTask } from './types';
-import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut, Search, Sparkles, Settings2, GripVertical } from 'lucide-react';
+import { ChevronRight, Calendar as CalendarIcon, UserPlus, LogIn, Lock, LockKeyhole, FlaskConical, AlertTriangle, Info, CheckSquare, RefreshCcw, Plus, Download, Mail, Users, CalendarClock, LogOut, Search, Settings2, GripVertical, Link as LinkIcon, Clock } from 'lucide-react';
 import { findBestMeetingTimeOffset } from './utils/timeUtils';
 import { initializeGoogleApi, requestLogin, fetchUserProfile, fetchCalendarEvents, fetchGoogleTasks, createGoogleTask, fetchPrimaryTaskListId, revokeGoogleToken, ensureGoogleScopes, GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE, GOOGLE_GMAIL_SEND_SCOPE, sendGmail } from './utils/googleApi';
 
@@ -35,6 +35,7 @@ function App() {
   const [tasks, setTasks] = useState<SyncedTask[]>([]);
   const [isSyncingTasks, setIsSyncingTasks] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDuration, setNewTaskDuration] = useState('30m');
 
   const isDemoMode = user?.accessToken === 'mock_token';
   const detectedOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
@@ -326,8 +327,9 @@ function App() {
     }
 
     if (isDemoMode) {
-      setTasks(prev => [{ id: Math.random().toString(36).slice(2), title: newTaskTitle, status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' }, ...prev]);
+      setTasks(prev => [{ id: Math.random().toString(36).slice(2), title: newTaskTitle, duration: newTaskDuration, status: 'needsAction', listId: 'demo', listTitle: 'Demo Tasks' }, ...prev]);
       setNewTaskTitle('');
+      setNewTaskDuration('30m');
       addToast('Demo task created.', 'success');
       return;
     }
@@ -341,6 +343,7 @@ function App() {
       }
       await createGoogleTask(listId, newTaskTitle.trim());
       setNewTaskTitle('');
+      setNewTaskDuration('30m');
       await syncTasks();
     } catch (error) {
       console.error(error);
@@ -391,6 +394,21 @@ function App() {
     { label: 'Connect Gmail', icon: Mail, onClick: connectGmailAccess },
     { label: 'Export Config', icon: Download, onClick: handleExport },
   ];
+
+  const bookingLinks = [
+    { id: 'b1', title: '15 Min Call', duration: '15m' },
+    { id: 'b2', title: '30 Min Demo', duration: '30m' },
+  ];
+
+  const shareAvailability = async () => {
+    const link = `${window.location.origin}/availability/${encodeURIComponent(user?.name || 'me')}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      addToast('Availability link copied to clipboard.', 'success');
+    } catch {
+      addToast('Unable to copy link. Clipboard permissions may be blocked.', 'error');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-canvas text-text-main font-sans selection:bg-brand-100 selection:text-brand-900">
@@ -448,16 +466,22 @@ function App() {
               <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full border border-slate-600" />
             </div>
 
-            <button
-              onClick={() => {
-                setScheduleDate(new Date());
-                setIsScheduleOpen(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:brightness-110"
-            >
-              <Plus className="w-4 h-4" />
-              New Event
-            </button>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                onClick={createTask}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-900/30 hover:brightness-110"
+              >
+                <Plus className="w-4 h-4" />
+                Add Task
+              </button>
+              <button
+                onClick={shareAvailability}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-600 bg-[#0c1f42] px-4 py-2.5 text-sm font-medium text-slate-100 hover:bg-[#0f274f]"
+              >
+                <LinkIcon className="w-4 h-4" />
+                Share Availability
+              </button>
+            </div>
 
             <div className="rounded-xl border border-slate-700 bg-[#0c1f42] p-4">
               <div className="flex items-center gap-2 text-sm text-slate-300"><Users className="w-4 h-4" /> Team</div>
@@ -499,15 +523,23 @@ function App() {
 
             <div className="rounded-xl border border-slate-700 p-4 bg-[#0c1f42] space-y-3">
               <p className="text-xs uppercase tracking-wide text-slate-400">Tasks</p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-[1fr_92px_auto] gap-2">
                 <input
                   value={newTaskTitle}
                   onChange={event => setNewTaskTitle(event.target.value)}
                   placeholder="Add a task..."
                   className="flex-1 rounded-md bg-[#0a1733] border border-slate-600 px-3 py-2 text-sm"
                 />
+                <input
+                  value={newTaskDuration}
+                  onChange={(event) => setNewTaskDuration(event.target.value)}
+                  placeholder="30m"
+                  aria-label="Estimated Time"
+                  className="rounded-md bg-[#0a1733] border border-slate-600 px-2 py-2 text-sm"
+                />
                 <button onClick={createTask} className="rounded-md bg-brand-600 px-3 py-2 text-xs font-semibold"><Plus className="w-4 h-4" /></button>
               </div>
+              <p className="text-[11px] text-slate-400 -mt-1">Estimated Time</p>
               <div className="max-h-44 overflow-y-auto space-y-2">
                 {tasks.length === 0 ? (
                   <p className="text-xs text-slate-400">No tasks synced yet.</p>
@@ -519,12 +551,28 @@ function App() {
                       title="Drag onto calendar to schedule"
                     >
                       <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-brand-300 opacity-0 transition-opacity group-hover:opacity-100"><GripVertical className="w-3 h-3" />Drag to timeline</p>
-                      <p className="text-sm">{task.title}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm">{task.title}</p>
+                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-100"><Clock className="w-3 h-3" />{task.duration || '30m'}</span>
+                      </div>
                       <p className="text-[11px] text-slate-400">{task.listTitle}</p>
                     </div>
                   ))
                 )}
               </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 p-4 bg-[#0c1f42] space-y-2">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Booking Links</p>
+              {bookingLinks.map(link => (
+                <div key={link.id} className="group rounded-md border border-slate-700 px-3 py-2 cursor-grab hover:border-violet-400 hover:bg-violet-500/10" title="Drag onto calendar to create external slot">
+                  <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-violet-300 opacity-0 transition-opacity group-hover:opacity-100"><GripVertical className="w-3 h-3" />Drag to timeline</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-slate-100">{link.title}</p>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-100"><LinkIcon className="w-3 h-3" />{link.duration}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <button onClick={handleLogout} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-[#0f274f]">
@@ -555,11 +603,11 @@ function App() {
               <div className="grid grid-cols-1 xl:grid-cols-[1fr_290px] gap-4">
                 <div className="rounded-xl border border-emerald-200/70 bg-emerald-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Daily Briefing</p>
-                  <p className="mt-1 text-sm text-emerald-900">You have <strong>2 hours of deep work</strong> available before your first afternoon meeting and a low-conflict slot around 2 PM for collaboration.</p>
+                  <p className="mt-1 text-sm text-emerald-900">Your availability is synced. Tasks on your calendar will block external bookings.</p>
                 </div>
                 <div className="rounded-xl border border-stroke bg-canvas-subtle px-4 py-3">
-                  <p className="text-xs uppercase tracking-wide text-text-muted">Focus score</p>
-                  <p className="mt-1 text-xl font-semibold inline-flex items-center gap-2"><Sparkles className="w-5 h-5 text-brand-600" />82 / 100</p>
+                  <p className="text-xs uppercase tracking-wide text-text-muted">Workflow</p>
+                  <p className="mt-1 text-sm font-semibold inline-flex items-center gap-2"><LinkIcon className="w-4 h-4 text-brand-600" />Calendly + Todoist hybrid mode</p>
                 </div>
               </div>
             </section>
