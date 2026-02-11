@@ -65,3 +65,20 @@ A production-focused workspace for distributed scheduling that combines:
 - Tailwind CSS
 - Google Identity Services (GIS)
 - Google Calendar / Gmail / Tasks APIs
+
+## Troubleshooting Optional Rollup Binary on Windows ARM
+
+If `npm run dev` fails with an error like `Cannot find module @rollup/rollup-win32-arm64-msvc`, this repo now runs a preflight check (`scripts/ensure-rollup-optional.mjs`) before `dev` and `build` to auto-install the matching optional Rollup binary.
+
+If you still hit the issue, run:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+Then retry:
+
+```bash
+npm run dev
+```

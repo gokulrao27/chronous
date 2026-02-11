@@ -4,10 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/ensure-rollup-optional.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "prebuild": "node scripts/ensure-rollup-optional.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.563.0",
